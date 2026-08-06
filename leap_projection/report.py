@@ -5,7 +5,7 @@ into a single report.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
@@ -40,6 +40,15 @@ class ProjectionReport:
                     {"name": s.name, "confirmed": s.confirmed, "detail": s.detail}
                     for s in self.bottom.signals
                 ],
+                "fundamental_gate": (
+                    {
+                        "name": self.bottom.fundamental_gate.name,
+                        "confirmed": self.bottom.fundamental_gate.confirmed,
+                        "detail": self.bottom.fundamental_gate.detail,
+                    }
+                    if self.bottom.fundamental_gate
+                    else None
+                ),
             },
             "peak": {
                 "blended_target": round(self.peak.blended_target, 2),
@@ -86,6 +95,9 @@ class ProjectionReport:
         for s in b.signals:
             mark = "x" if s.confirmed else " "
             lines.append(f"    [{mark}] {s.detail}")
+        if b.fundamental_gate:
+            mark = "x" if b.fundamental_gate.confirmed else " "
+            lines.append(f"    [{mark}] {b.fundamental_gate.detail}  (fundamental gate)")
         lines.append("")
 
         if not b.confirmed:
@@ -123,8 +135,13 @@ class ProjectionReport:
         return "\n".join(lines)
 
 
-def build_report(symbol: str, hist: pd.DataFrame, fundamentals: Fundamentals) -> ProjectionReport:
-    bottom = assess_bottom(hist)
+def build_report(
+    symbol: str,
+    hist: pd.DataFrame,
+    fundamentals: Fundamentals,
+    eps_growth_threshold: Optional[float] = None,
+) -> ProjectionReport:
+    bottom = assess_bottom(hist, fundamentals=fundamentals, eps_growth_threshold=eps_growth_threshold)
     bottom.symbol = fundamentals.symbol
     peak = project_peak(fundamentals, hist)
     timeframe = project_timeframe(hist, fundamentals, peak, bottom)
@@ -138,8 +155,8 @@ def build_report(symbol: str, hist: pd.DataFrame, fundamentals: Fundamentals) ->
     )
 
 
-def run(symbol: str, period: str = "5y") -> ProjectionReport:
+def run(symbol: str, years: int = 3, eps_growth_threshold: Optional[float] = None) -> ProjectionReport:
     """Convenience end-to-end entry point: fetch data and build the report."""
-    hist = fetch_price_history(symbol, period=period)
+    hist = fetch_price_history(symbol, years=years)
     fundamentals = fetch_fundamentals(symbol)
-    return build_report(symbol, hist, fundamentals)
+    return build_report(symbol, hist, fundamentals, eps_growth_threshold=eps_growth_threshold)

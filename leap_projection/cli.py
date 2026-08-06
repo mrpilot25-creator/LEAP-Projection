@@ -2,7 +2,10 @@
 
 Usage:
     python -m leap_projection.cli AAPL
-    python -m leap_projection.cli AAPL --period 3y --json
+    python -m leap_projection.cli AAPL --years 5 --json
+    python -m leap_projection.cli AAPL --eps-growth-threshold 0.15
+
+Requires the FMP_API_KEY environment variable (see README).
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import argparse
 import json
 import sys
 
+from .data import FMPError
 from .report import run
 
 
@@ -24,16 +28,26 @@ def main(argv=None) -> int:
     )
     parser.add_argument("symbol", help="Ticker symbol, e.g. AAPL")
     parser.add_argument(
-        "--period",
-        default="5y",
-        help="Price history window to analyze (yfinance period string, default 5y)",
+        "--years",
+        type=int,
+        default=3,
+        help="Years of price history to analyze (default 3)",
+    )
+    parser.add_argument(
+        "--eps-growth-threshold",
+        type=float,
+        default=None,
+        help=(
+            "Optional fundamental gate: only confirm a bottom if trailing YoY "
+            "EPS growth is also >= this fraction (e.g. 0.15 for 15%%). Off by default."
+        ),
     )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     args = parser.parse_args(argv)
 
     try:
-        report = run(args.symbol, period=args.period)
-    except ValueError as exc:
+        report = run(args.symbol, years=args.years, eps_growth_threshold=args.eps_growth_threshold)
+    except (ValueError, FMPError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
