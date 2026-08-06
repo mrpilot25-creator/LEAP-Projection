@@ -11,6 +11,7 @@ import pandas as pd
 
 from .bottom import BottomAssessment, assess_bottom
 from .data import Fundamentals, fetch_fundamentals, fetch_price_history
+from .estimates import enrich_fundamentals_with_estimates, load_stockanalysis_estimates
 from .stockanalysis_xlsx import enrich_fundamentals
 from .timeframe import TimeframeProjection, project_timeframe
 from .valuation import PeakProjection, project_peak
@@ -141,11 +142,12 @@ def build_report(
     hist: pd.DataFrame,
     fundamentals: Fundamentals,
     eps_growth_threshold: Optional[float] = None,
+    quarterly_estimates: Optional[pd.DataFrame] = None,
 ) -> ProjectionReport:
     bottom = assess_bottom(hist, fundamentals=fundamentals, eps_growth_threshold=eps_growth_threshold)
     bottom.symbol = fundamentals.symbol
     peak = project_peak(fundamentals, hist)
-    timeframe = project_timeframe(hist, fundamentals, peak, bottom)
+    timeframe = project_timeframe(hist, fundamentals, peak, bottom, quarterly_estimates=quarterly_estimates)
     return ProjectionReport(
         symbol=fundamentals.symbol,
         as_of=bottom.as_of,
@@ -161,6 +163,7 @@ def run(
     years: int = 3,
     eps_growth_threshold: Optional[float] = None,
     stockanalysis_xlsx: Optional[str] = None,
+    estimates_file: Optional[str] = None,
 ) -> ProjectionReport:
     """Convenience end-to-end entry point: fetch data and build the report.
 
@@ -168,9 +171,27 @@ def run(
     financials export used to enrich the FMP fundamentals with a
     multi-year historical P/E reversion multiple and longer-run growth
     rates (see leap_projection/stockanalysis_xlsx.py).
+
+    `estimates_file`, if given, is the path to a text file containing a
+    copy-pasted stockanalysis.com quarterly analyst-estimates table, used
+    to set a real consensus forward EPS/growth rate and to find which
+    future quarter first justifies the projected peak price (see
+    leap_projection/estimates.py).
     """
     hist = fetch_price_history(symbol, years=years)
     fundamentals = fetch_fundamentals(symbol)
     if stockanalysis_xlsx:
         fundamentals = enrich_fundamentals(fundamentals, stockanalysis_xlsx)
-    return build_report(symbol, hist, fundamentals, eps_growth_threshold=eps_growth_threshold)
+
+    quarterly_estimates = None
+    if estimates_file:
+        quarterly_estimates = load_stockanalysis_estimates(estimates_file)
+        fundamentals = enrich_fundamentals_with_estimates(fundamentals, quarterly_estimates)
+
+    return build_report(
+        symbol,
+        hist,
+        fundamentals,
+        eps_growth_threshold=eps_growth_threshold,
+        quarterly_estimates=quarterly_estimates,
+    )

@@ -51,6 +51,15 @@ def main(argv=None) -> int:
             "growth rates."
         ),
     )
+    parser.add_argument(
+        "--estimates-file",
+        default=None,
+        help=(
+            "Optional path to a text file containing a copy-pasted stockanalysis.com "
+            "quarterly analyst-estimates table, used for a real consensus forward EPS "
+            "and an analyst-grounded timeframe estimate."
+        ),
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     args = parser.parse_args(argv)
 
@@ -60,6 +69,7 @@ def main(argv=None) -> int:
             years=args.years,
             eps_growth_threshold=args.eps_growth_threshold,
             stockanalysis_xlsx=args.stockanalysis_xlsx,
+            estimates_file=args.estimates_file,
         )
     except (ValueError, FMPError) as exc:
         print(f"Error: {exc}", file=sys.stderr)

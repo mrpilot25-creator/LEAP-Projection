@@ -64,3 +64,36 @@ def test_project_timeframe_end_to_end(declining_then_basing_hist):
     assert projection.blended_months > 0
     assert isinstance(projection.target_date, pd.Timestamp)
     assert projection.target_date > bottom.as_of
+    assert {e.method for e in projection.estimates} <= {
+        "historical_bottom_to_peak_cycles",
+        "fundamentals_growth_implied",
+    }
+
+
+def test_project_timeframe_includes_analyst_estimate_crossing_when_supplied(declining_then_basing_hist):
+    fundamentals = _fundamentals()  # trailing_pe=25.0, forward_pe=20.0 -> reversion P/E 25.0
+    bottom = assess_bottom(declining_then_basing_hist)
+    bottom.symbol = fundamentals.symbol
+    peak = project_peak(fundamentals, declining_then_basing_hist)
+    as_of = bottom.as_of
+    reversion_pe = 25.0
+
+    # 4 trailing quarters (low EPS) + 4 upcoming quarters sized so the
+    # trailing-twelve-month run rate eventually clears the peak target.
+    needed_ttm_eps = (peak.blended_target / reversion_pe) * 1.5
+    per_quarter = needed_ttm_eps / 4
+    before_dates = [as_of - pd.DateOffset(months=3 * i) for i in range(4, 0, -1)]
+    after_dates = [as_of + pd.DateOffset(months=3 * i) for i in range(1, 5)]
+    eps_values = [per_quarter * 0.5] * 4 + [per_quarter] * 4
+    quarterly_estimates = pd.DataFrame(
+        {"eps": eps_values},
+        index=pd.DatetimeIndex(before_dates + after_dates, name="period_ending"),
+    ).sort_index()
+
+    projection = project_timeframe(
+        declining_then_basing_hist, fundamentals, peak, bottom, quarterly_estimates=quarterly_estimates
+    )
+
+    crossing = next((e for e in projection.estimates if e.method == "analyst_estimate_crossing"), None)
+    assert crossing is not None
+    assert crossing.months > 0

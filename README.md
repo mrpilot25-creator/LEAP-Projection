@@ -8,7 +8,8 @@ Given a ticker, it:
 1. **Fetches** current price history and fundamental data from
    [Financial Modeling Prep](https://financialmodelingprep.com/) (FMP),
    optionally enriched with a manually-downloaded
-   [stockanalysis.com](https://stockanalysis.com/) financials export.
+   [stockanalysis.com](https://stockanalysis.com/) financials export and/or
+   a copy-pasted stockanalysis.com quarterly analyst-estimates table.
 2. **Assesses whether a bottom has been established**, using a validated
    6-signal technical checklist (ported from backtested research — see
    below).
@@ -16,7 +17,8 @@ Given a ticker, it:
    several independent valuation methods.
 4. **Estimates the timeframe** to reach that peak, blending the stock's own
    historical bottom→peak cycle length with a fundamentals-growth-implied
-   estimate.
+   estimate (and, when analyst estimates are supplied, the first future
+   quarter the consensus trajectory actually reaches the target).
 
 This is a screening aid, not investment advice — see the disclaimer at the
 bottom.
@@ -61,6 +63,18 @@ Annual/Quarterly/TTM, 12 sheets) and pass its path via
 price targets** — its value here is a genuine multi-year historical P/E
 series and longer earnings/revenue history (see Methodology).
 
+### Optional: stockanalysis.com quarterly analyst estimates (copy-paste)
+
+stockanalysis.com's *forward* quarterly-estimates table (Revenue/EPS/etc.
+projected out ~3 years, with analyst counts) isn't downloadable either, but
+it can be **copy-pasted**. Select the table on the page, copy it, paste it
+into a plain text file, and pass that file's path via `--estimates-file`.
+This is the one source that actually has forward-looking consensus data —
+see `leap_projection/estimates.py` for the expected paste shape. It's used
+to set a real consensus forward EPS/growth rate (replacing the CAGR-derived
+proxy) and to find which future quarter the consensus EPS trajectory first
+justifies the projected peak price.
+
 ## Usage
 
 ```bash
@@ -68,6 +82,7 @@ python -m leap_projection.cli AAPL
 python -m leap_projection.cli AAPL --years 5 --json
 python -m leap_projection.cli AAPL --eps-growth-threshold 0.15
 python -m leap_projection.cli NFLX --stockanalysis-xlsx ~/Downloads/NFLX-financials.xlsx
+python -m leap_projection.cli NFLX --estimates-file ~/Downloads/NFLX-estimates.txt
 ```
 
 Or, after `pip install -e .`:
@@ -82,7 +97,8 @@ bars). `--json` prints a machine-readable report instead of the text
 summary. `--eps-growth-threshold` optionally layers a fundamental gate on
 top of the technical checklist (see below). `--stockanalysis-xlsx` optionally
 enriches the peak valuation with a downloaded stockanalysis.com financials
-export.
+export. `--estimates-file` optionally enriches both the peak valuation and
+the timeframe estimate with a copy-pasted quarterly analyst-estimates table.
 
 ## Methodology
 
@@ -137,6 +153,13 @@ derived from the historical annual EPS/revenue CAGR (up to 5 years, via
 not a market-implied one. Growth rates are clipped to [-50%, +150%]/yr to
 keep noisy small-base periods from producing absurd projections.
 
+**With `--estimates-file` supplied** (`leap_projection/estimates.py`),
+`forward_eps` is instead the real **consensus next-twelve-months EPS**
+(sum of the next 4 quarters' estimates), and `earnings_growth` is that NTM
+EPS versus the trailing-twelve-months actual — both fall back to the
+FMP/xlsx-derived values when the pasted table doesn't have 4 full quarters
+on either side of today.
+
 **`forward_pe_reversion`'s "normal" multiple:** without a stockanalysis.com
 export, this proxies the stock's normal multiple with its *current*
 trailing/forward P/E — a single point in time, not a true historical
@@ -152,13 +175,21 @@ blended target as a directional anchor with a visible range
 
 ### 3. Timeframe estimation (`leap_projection/timeframe.py`)
 
-Two independent estimates, blended (median):
+Up to three independent estimates, blended (median):
 
 - **historical_bottom_to_peak_cycles** — average duration of past swing-low
   → swing-high moves found in the stock's own price history.
 - **fundamentals_growth_implied** — years of compounding at the current
   earnings/revenue growth rate needed to close the gap from current price to
   the projected peak target.
+- **analyst_estimate_crossing** — *(only with `--estimates-file`)* the
+  first future quarter whose consensus trailing-twelve-month EPS, at the
+  reversion P/E, projects a price that reaches the peak target. Unlike the
+  other two methods, this isn't a constant-rate extrapolation — it walks
+  the actual quarter-by-quarter consensus trajectory and finds where it
+  crosses, so different growth shapes (e.g. a slow next 2 quarters then an
+  acceleration) show up as a non-uniform timeline instead of being smoothed
+  into a single rate.
 
 ## Running tests
 
@@ -176,12 +207,22 @@ deterministic and CI-friendly.
 - FMP's `Free`/`Starter`-tier income-statement history is typically limited
   to a handful of years, and quarterly report timing/field availability
   varies by ticker — coverage is thinner for smaller/less-covered names.
-- The stockanalysis.com enrichment is a **manual download**, not a live
-  fetch — it's a snapshot as of whenever you downloaded it, and has to be
-  re-downloaded and re-passed for a fresh run. It also has no analyst
-  estimates or price targets, despite being a paid subscription; if
-  stockanalysis.com's data plans add those to the Excel export later, this
-  integration doesn't pick them up automatically.
+- Both stockanalysis.com enrichments (the financials export and the
+  estimates paste) are **manual, point-in-time snapshots**, not a live
+  fetch — they reflect whenever you downloaded/copied them, and have to be
+  refreshed and re-passed for a current run. The financials export also has
+  no analyst estimates or price targets, despite being a paid subscription.
+- The estimates-paste parser is format-sensitive: it expects the exact
+  "Fiscal Quarter" / "Period Ending" header rows and known metric labels
+  (see `leap_projection/estimates.py`). If stockanalysis.com changes its
+  table layout, or a paste gets reflowed by the source app, re-check the
+  saved text file against the expected shape before relying on it.
+- The `analyst_estimate_crossing` timeframe method is bounded by how far out
+  the pasted estimates actually run (coverage thins fast — the real NFLX
+  paste this was built against goes from 38 covering analysts down to 1 by
+  the final quarters) and returns nothing if the target is never reached
+  within that window, which doesn't mean the target won't be reached, only
+  that this method can't see that far.
 - Bottom detection and cycle-length analysis are purely price/volume-based
   (technical), while the peak target is purely fundamentals-based — they are
   intentionally independent lenses, not a single unified model.

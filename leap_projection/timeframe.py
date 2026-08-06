@@ -1,11 +1,16 @@
 """Timeframe estimation: how long until the projected peak, once a bottom holds.
 
-Two independent methods are blended:
+Up to three independent methods are blended:
   * historical_bottom_to_peak_cycles - average duration of past bottom->peak
     swings in the stock's own price history.
   * fundamentals_growth_implied - years of compounding at the fundamental
     growth rate needed to close the gap between current price and the
     projected peak target.
+  * analyst_estimate_crossing - (only when a stockanalysis.com quarterly
+    estimates paste is supplied) the first future quarter whose consensus
+    trailing-twelve-month EPS, at the reversion P/E, projects a price that
+    reaches the peak target -- a real analyst-grounded date rather than a
+    constant-growth-rate assumption.
 
 This is directly aimed at LEAP option planning: the blended horizon is a
 starting point for picking an expiration with enough runway.
@@ -21,7 +26,8 @@ import pandas as pd
 
 from .bottom import BottomAssessment, find_swing_lows
 from .data import Fundamentals
-from .valuation import PeakProjection
+from .estimates import analyst_estimate_crossing_months
+from .valuation import PeakProjection, _reversion_multiple
 
 AVG_DAYS_PER_MONTH = 30.44
 DEFAULT_FALLBACK_MONTHS = 18.0  # a neutral LEAP-horizon default when no signal is available
@@ -112,6 +118,7 @@ def project_timeframe(
     fundamentals: Fundamentals,
     peak: PeakProjection,
     bottom: BottomAssessment,
+    quarterly_estimates: Optional[pd.DataFrame] = None,
 ) -> TimeframeProjection:
     estimates: List[TimeframeEstimate] = []
 
@@ -138,6 +145,21 @@ def project_timeframe(
                 f"{peak.current_price:.2f} to {peak.blended_target:.2f}",
             )
         )
+
+    if quarterly_estimates is not None:
+        reversion_pe = _reversion_multiple(fundamentals)
+        crossing_months = analyst_estimate_crossing_months(
+            quarterly_estimates, reversion_pe, peak.blended_target, bottom.as_of
+        )
+        if crossing_months is not None:
+            estimates.append(
+                TimeframeEstimate(
+                    "analyst_estimate_crossing",
+                    crossing_months,
+                    f"First future quarter whose consensus TTM EPS x {reversion_pe:.1f} "
+                    f"reversion P/E reaches {peak.blended_target:.2f}",
+                )
+            )
 
     valid = [e.months for e in estimates if e.months is not None]
     blended = float(np.median(valid)) if valid else DEFAULT_FALLBACK_MONTHS
