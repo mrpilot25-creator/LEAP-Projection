@@ -54,6 +54,8 @@ class PeakProjection:
 
 
 def _reversion_multiple(fundamentals: Fundamentals) -> Optional[float]:
+    if fundamentals.historical_pe_multiple and fundamentals.historical_pe_multiple > 0:
+        return float(fundamentals.historical_pe_multiple)
     candidates = [p for p in (fundamentals.trailing_pe, fundamentals.forward_pe) if p and p > 0]
     if not candidates:
         return None
@@ -67,12 +69,17 @@ def project_peak(fundamentals: Fundamentals, hist: pd.DataFrame) -> PeakProjecti
 
     reversion_pe = _reversion_multiple(fundamentals)
     if fundamentals.forward_eps and reversion_pe:
+        source = (
+            "multi-year historical median"
+            if fundamentals.historical_pe_multiple
+            else "current trailing/forward"
+        )
         target = fundamentals.forward_eps * reversion_pe
         estimates.append(
             ValuationEstimate(
                 "forward_pe_reversion",
                 target,
-                f"Forward EPS {fundamentals.forward_eps:.2f} x reversion P/E {reversion_pe:.1f}",
+                f"Forward EPS {fundamentals.forward_eps:.2f} x {source} P/E {reversion_pe:.1f}",
             )
         )
 

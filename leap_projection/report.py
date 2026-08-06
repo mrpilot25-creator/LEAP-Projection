@@ -11,6 +11,7 @@ import pandas as pd
 
 from .bottom import BottomAssessment, assess_bottom
 from .data import Fundamentals, fetch_fundamentals, fetch_price_history
+from .stockanalysis_xlsx import enrich_fundamentals
 from .timeframe import TimeframeProjection, project_timeframe
 from .valuation import PeakProjection, project_peak
 
@@ -155,8 +156,21 @@ def build_report(
     )
 
 
-def run(symbol: str, years: int = 3, eps_growth_threshold: Optional[float] = None) -> ProjectionReport:
-    """Convenience end-to-end entry point: fetch data and build the report."""
+def run(
+    symbol: str,
+    years: int = 3,
+    eps_growth_threshold: Optional[float] = None,
+    stockanalysis_xlsx: Optional[str] = None,
+) -> ProjectionReport:
+    """Convenience end-to-end entry point: fetch data and build the report.
+
+    `stockanalysis_xlsx`, if given, is the path to a stockanalysis.com
+    financials export used to enrich the FMP fundamentals with a
+    multi-year historical P/E reversion multiple and longer-run growth
+    rates (see leap_projection/stockanalysis_xlsx.py).
+    """
     hist = fetch_price_history(symbol, years=years)
     fundamentals = fetch_fundamentals(symbol)
+    if stockanalysis_xlsx:
+        fundamentals = enrich_fundamentals(fundamentals, stockanalysis_xlsx)
     return build_report(symbol, hist, fundamentals, eps_growth_threshold=eps_growth_threshold)

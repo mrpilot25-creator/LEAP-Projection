@@ -42,11 +42,25 @@ def main(argv=None) -> int:
             "EPS growth is also >= this fraction (e.g. 0.15 for 15%%). Off by default."
         ),
     )
+    parser.add_argument(
+        "--stockanalysis-xlsx",
+        default=None,
+        help=(
+            "Optional path to a stockanalysis.com financials export (.xlsx) to enrich "
+            "the peak valuation with a multi-year historical P/E multiple and longer-run "
+            "growth rates."
+        ),
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     args = parser.parse_args(argv)
 
     try:
-        report = run(args.symbol, years=args.years, eps_growth_threshold=args.eps_growth_threshold)
+        report = run(
+            args.symbol,
+            years=args.years,
+            eps_growth_threshold=args.eps_growth_threshold,
+            stockanalysis_xlsx=args.stockanalysis_xlsx,
+        )
     except (ValueError, FMPError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

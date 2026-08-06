@@ -54,6 +54,7 @@ class Fundamentals:
     sector: Optional[str]
     market_cap: Optional[float]
     eps_growth_yoy: Optional[float] = None  # latest-quarter trailing YoY EPS growth
+    historical_pe_multiple: Optional[float] = None  # multi-year median P/E, if available
 
 
 def _api_key() -> str:

@@ -6,7 +6,9 @@ sane expiration when planning long-dated (LEAP) call options.
 Given a ticker, it:
 
 1. **Fetches** current price history and fundamental data from
-   [Financial Modeling Prep](https://financialmodelingprep.com/) (FMP).
+   [Financial Modeling Prep](https://financialmodelingprep.com/) (FMP),
+   optionally enriched with a manually-downloaded
+   [stockanalysis.com](https://stockanalysis.com/) financials export.
 2. **Assesses whether a bottom has been established**, using a validated
    6-signal technical checklist (ported from backtested research — see
    below).
@@ -48,12 +50,24 @@ price-target endpoints require a higher FMP plan and aren't used — forward
 EPS and growth rates are instead derived from historical income-statement
 trends (see Methodology).
 
+### Optional: stockanalysis.com financials export
+
+[stockanalysis.com](https://stockanalysis.com/) doesn't offer a live API on
+a standard subscription, but its "Export to Excel" financials download can
+be passed in manually to improve the peak valuation. On a stock's page,
+download the financials workbook (Income/Balance-Sheet/Cash-Flow/Ratios ×
+Annual/Quarterly/TTM, 12 sheets) and pass its path via
+`--stockanalysis-xlsx`. Note this export has **no analyst estimates or
+price targets** — its value here is a genuine multi-year historical P/E
+series and longer earnings/revenue history (see Methodology).
+
 ## Usage
 
 ```bash
 python -m leap_projection.cli AAPL
 python -m leap_projection.cli AAPL --years 5 --json
 python -m leap_projection.cli AAPL --eps-growth-threshold 0.15
+python -m leap_projection.cli NFLX --stockanalysis-xlsx ~/Downloads/NFLX-financials.xlsx
 ```
 
 Or, after `pip install -e .`:
@@ -66,7 +80,9 @@ leap-projection AAPL
 checklist and cycle-length analysis (default 3; needs at least ~150 daily
 bars). `--json` prints a machine-readable report instead of the text
 summary. `--eps-growth-threshold` optionally layers a fundamental gate on
-top of the technical checklist (see below).
+top of the technical checklist (see below). `--stockanalysis-xlsx` optionally
+enriches the peak valuation with a downloaded stockanalysis.com financials
+export.
 
 ## Methodology
 
@@ -110,7 +126,7 @@ Up to four independent price targets are computed and blended (median):
 
 | Method | Formula |
 |---|---|
-| `forward_pe_reversion` | forward EPS × the higher of trailing/forward P/E, as a proxy "normal" multiple |
+| `forward_pe_reversion` | forward EPS × a "normal" P/E multiple |
 | `peg_one` | forward EPS × growth-implied fair P/E, capped at 60 (PEG = 1 heuristic) |
 | `analyst_consensus` | sell-side mean 12-month price target (unavailable on FMP Free/Starter — skipped) |
 | `prior_high_extension` | prior cycle high grown forward by the current revenue/earnings growth rate |
@@ -121,10 +137,18 @@ derived from the historical annual EPS/revenue CAGR (up to 5 years, via
 not a market-implied one. Growth rates are clipped to [-50%, +150%]/yr to
 keep noisy small-base periods from producing absurd projections.
 
-**Known limitation:** `forward_pe_reversion` proxies the stock's "normal"
-multiple with its *current* trailing/forward P/E, not a true multi-year
-historical average. Treat the blended target as a directional anchor with a
-visible range (`low_target`/`high_target`), not a precise number.
+**`forward_pe_reversion`'s "normal" multiple:** without a stockanalysis.com
+export, this proxies the stock's normal multiple with its *current*
+trailing/forward P/E — a single point in time, not a true historical
+average. With a `--stockanalysis-xlsx` export supplied
+(`leap_projection/stockanalysis_xlsx.py`), it instead uses the **median of
+the trailing 5 fiscal years' actual P/E ratios** (positive years only,
+needs at least 3 usable years) — a materially better reversion target — and
+`earnings_growth`/`revenue_growth` are recomputed from the export's longer
+EPS/revenue history too, falling back to the FMP-derived CAGR wherever the
+export doesn't have enough history for a given field. Either way, treat the
+blended target as a directional anchor with a visible range
+(`low_target`/`high_target`), not a precise number.
 
 ### 3. Timeframe estimation (`leap_projection/timeframe.py`)
 
@@ -152,6 +176,12 @@ deterministic and CI-friendly.
 - FMP's `Free`/`Starter`-tier income-statement history is typically limited
   to a handful of years, and quarterly report timing/field availability
   varies by ticker — coverage is thinner for smaller/less-covered names.
+- The stockanalysis.com enrichment is a **manual download**, not a live
+  fetch — it's a snapshot as of whenever you downloaded it, and has to be
+  re-downloaded and re-passed for a fresh run. It also has no analyst
+  estimates or price targets, despite being a paid subscription; if
+  stockanalysis.com's data plans add those to the Excel export later, this
+  integration doesn't pick them up automatically.
 - Bottom detection and cycle-length analysis are purely price/volume-based
   (technical), while the peak target is purely fundamentals-based — they are
   intentionally independent lenses, not a single unified model.
